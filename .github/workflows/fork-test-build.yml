@@ -70,10 +70,12 @@ jobs:
             -project Loop.xcodeproj \
             -scheme "Loop (GH ACTIONS)" \
             -configuration Development \
-            -destination "platform=macOS" \
-            -derivedDataPath DerivedData \
+            -destination "platform=macOS,arch=arm64" \
+            -derivedDataPath BuildDerivedData \
             -skipMacroValidation \
             -skipPackagePluginValidation \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             DEVELOPMENT_TEAM=
@@ -81,7 +83,7 @@ jobs:
       - name: Prepare personal test app
         run: |
           mkdir -p dist
-          ditto "DerivedData/Build/Products/Development/Loop.app" "dist/Loop Adjacent Test.app"
+          ditto "BuildDerivedData/Build/Products/Development/Loop.app" "dist/Loop Adjacent Test.app"
           plutil -replace CFBundleDisplayName -string "Loop Adjacent Test" "dist/Loop Adjacent Test.app/Contents/Info.plist"
           plutil -replace CFBundleName -string "Loop Adjacent Test" "dist/Loop Adjacent Test.app/Contents/Info.plist"
           plutil -replace CFBundleIdentifier -string "com.tenda96.LoopAdjacentTest" "dist/Loop Adjacent Test.app/Contents/Info.plist"
