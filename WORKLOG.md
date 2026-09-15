@@ -27,7 +27,7 @@ The user will perform application-level testing. Before handoff, the project mus
 
 ## Status
 
-Current phase: implementation complete for the first code pass; remote Xcode build preparation is in progress because full Xcode is not installed locally.
+Current phase: first testable ARM64 build complete, installed, and launched; awaiting the user's application-level feedback.
 
 ### Completed
 
@@ -50,16 +50,14 @@ Current phase: implementation complete for the first code pass; remote Xcode bui
 - [x] Add English and Italian string-catalog entries for the setting.
 - [x] Create the GitHub fork `tenda96/Loop` from upstream `develop`.
 - [x] Add a fork-specific macOS CI workflow that needs no Apple signing certificates.
-- [ ] Push the feature branch and establish a clean remote Xcode build.
+- [x] Push the feature branch and establish a clean remote Xcode build.
 
 ### Next steps
 
-1. Connect the local checkout to `https://github.com/tenda96/Loop.git` and push the feature branch.
-2. Run the fork-only GitHub Actions workflow on a macOS runner with Xcode 26.4.
-3. Resolve any compiler, concurrency, test, or formatting findings from the full toolchain.
-4. Download the identifiable `Loop Adjacent Test.app` artifact.
-5. Install it locally, grant Accessibility access, and verify launch/runtime health.
-6. Prepare the user's manual test checklist and request feedback.
+1. Have the user enable **Resize adjacent windows** under Loop's Behavior settings.
+2. Test two horizontally adjacent windows on the same display by dragging their shared vertical boundary in both directions.
+3. Collect the affected applications, expected behavior, observed behavior, and any overlap/jitter/minimum-size issue.
+4. Refine the implementation from that feedback before expanding to vertical or multi-window layouts.
 
 ## MVP acceptance criteria
 
@@ -104,6 +102,8 @@ Current phase: implementation complete for the first code pass; remote Xcode bui
 - 2026-09-15: third remote run `34973347608` confirmed that ad-hoc signing completed successfully for Loop, its updater helper, Dock Tile plugin, and `LoopTests`, but the hosted Loop process still did not establish an XCTest connection on the headless runner and timed out after 353 seconds. This isolates the failure to launching the GUI test host in GitHub Actions rather than compilation or signing.
 - 2026-09-15: replaced hosted test execution in fork CI with `xcodebuild build-for-testing`, which still compiles the entire app and the complete `LoopTests` target. Added a standalone executable smoke suite for adjacent-resize geometry so the new pure logic is executed without launching the GUI app. The workflow continues to build and package the development `.app` only after both checks succeed.
 - 2026-09-15: fourth remote run `34974767088` passed package resolution, SwiftFormat, full application/test-target compilation, and the standalone adjacent-resize geometry smoke suite. Only the later Development artifact build failed: it reused the Debug build's `DerivedData` while requesting a universal arm64/x86_64 product, producing corrupted or architecture-incompatible dependency modules and missing x86_64 Loop modules. Isolated the artifact build in `BuildDerivedData` and restricted the personal test package to arm64, matching the user's Apple Silicon Mac.
+- 2026-09-15: fifth remote run `34977633964` succeeded end to end: dependency resolution, SwiftFormat, full application and test-target compilation, standalone adjacent-resize checks, ARM64 Development app build, ad-hoc signing, verification, and artifact upload all passed.
+- 2026-09-15: downloaded `Loop-Adjacent-Test.zip` to `artifacts/run-34977633964`, extracted it, confirmed the packaged app's signature is valid, verified its `arm64` executable and test-only bundle ID `com.tenda96.LoopAdjacentTest`, and matched the installed `/Applications/Loop Adjacent Test.app` executable byte-for-byte to the CI artifact. The installed app launched successfully and remained active as process `9344`; application-level behavior is now handed to the user for testing.
 
 ## Environment blocker
 
