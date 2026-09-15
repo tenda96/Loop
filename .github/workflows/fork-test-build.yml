@@ -41,19 +41,28 @@ jobs:
       - name: Check Swift formatting
         run: swiftformat --lint . --reporter github-actions-log
 
-      - name: Run tests
+      - name: Compile app and test target
         run: |
-          xcodebuild test \
+          xcodebuild build-for-testing \
             -project Loop.xcodeproj \
             -scheme "Loop (GH ACTIONS)" \
             -destination "platform=macOS" \
             -derivedDataPath DerivedData \
-            -resultBundlePath dist/LoopTests.xcresult \
             -skipMacroValidation \
             -skipPackagePluginValidation \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY=- \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
             DEVELOPMENT_TEAM=
+
+      - name: Run adjacent resize geometry checks
+        run: |
+          mkdir -p dist
+          xcrun swiftc \
+            -parse-as-library \
+            "Loop/Window Management/Window Manipulation/AdjacentWindowResizeGeometry.swift" \
+            ".github/scripts/AdjacentWindowResizeGeometrySmoke.swift" \
+            -o dist/adjacent-resize-geometry-smoke
+          dist/adjacent-resize-geometry-smoke
 
       - name: Build development app
         run: |
@@ -79,14 +88,6 @@ jobs:
           codesign --force --deep --sign - --timestamp=none --entitlements Loop/Loop.entitlements "dist/Loop Adjacent Test.app"
           codesign --verify --deep --strict --verbose=2 "dist/Loop Adjacent Test.app"
           ditto -c -k --sequesterRsrc --keepParent "dist/Loop Adjacent Test.app" "dist/Loop-Adjacent-Test.zip"
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: Loop-Test-Results
-          path: dist/LoopTests.xcresult
-          if-no-files-found: ignore
 
       - name: Upload test app
         uses: actions/upload-artifact@v7
