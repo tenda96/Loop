@@ -129,7 +129,7 @@ final class AdjacentWindowResizeController {
             edge: edge,
             candidates: geometryCandidates
         ),
-              let neighbor = candidates.first(where: { $0.cgWindowID == match.windowID })
+            let neighbor = candidates.first(where: { $0.cgWindowID == match.windowID })
         else {
             didFailToCreateSession = true
             return
