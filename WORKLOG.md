@@ -100,6 +100,7 @@ Current phase: implementation complete for the first code pass; remote Xcode bui
 - 2026-09-15: created the public GitHub fork `tenda96/Loop`, copying the upstream `develop` branch.
 - 2026-09-15: added `.github/workflows/fork-test-build.yml`. It runs formatting and the Loop test target on GitHub's `macos-26` runner using Xcode 26.4, builds without Apple certificates, applies an ad-hoc signature, assigns the test-only main bundle identifier `com.tenda96.LoopAdjacentTest`, and uploads `Loop-Adjacent-Test.zip`.
 - 2026-09-15: first remote run `34971925891` successfully selected Xcode 26.4 and resolved every Swift package, then stopped at SwiftFormat before compilation because one continuation line in `AdjacentWindowResizeController.swift` was over-indented. Corrected the reported indentation and queued a second run.
+- 2026-09-15: second remote run `34972130222` passed dependency resolution and SwiftFormat. Xcode compiled and linked the application and `LoopTests` successfully, confirming that the first-pass feature code builds with Xcode 26.4. Test execution then timed out because the hosted test application had been built completely unsigned (`The test runner hung before establishing connection`). Changed only the test step to use macOS ad-hoc signing so the test host can launch without Apple certificates.
 
 ## Environment blocker
 
