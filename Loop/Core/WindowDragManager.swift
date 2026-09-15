@@ -17,6 +17,7 @@ final class WindowDragManager {
 
     private var resizeContext: ResizeContext?
     private var initialWindowFrame: CGRect?
+    private let adjacentWindowResizeController = AdjacentWindowResizeController()
 
     /// This is to avoid repeated window resolution attempts during a non-window drag (e.g. in games).
     private var didFailToResolveDraggedWindow: Bool = false
@@ -37,6 +38,7 @@ final class WindowDragManager {
     private var shouldMonitorDragActions: Bool {
         Defaults[.windowSnapping] ||
             Defaults[.restoreWindowFrameOnDrag] ||
+            Defaults[.resizeAdjacentWindows] ||
             !Defaults[.stashManagerStashedWindows].isEmpty
     }
 
@@ -108,7 +110,18 @@ final class WindowDragManager {
             if let window = resizeContext?.window,
                let initialFrame = initialWindowFrame,
                hasWindowResized(window.frame, initialFrame) {
-                if hasWindowMoved(window.frame, initialFrame) {
+                let currentFrame = window.frame
+
+                if Defaults[.resizeAdjacentWindows],
+                   !hasWindowMoved(currentFrame, initialFrame) {
+                    adjacentWindowResizeController.synchronize(
+                        source: window,
+                        initialSourceFrame: initialFrame,
+                        currentSourceFrame: currentFrame
+                    )
+                }
+
+                if hasWindowMoved(currentFrame, initialFrame) {
                     if Defaults[.restoreWindowFrameOnDrag] {
                         await restoreInitialWindowSize(window)
                     }
@@ -134,14 +147,15 @@ final class WindowDragManager {
     }
 
     private func leftMouseUp(_: CGEvent) {
-        guard Defaults[.windowSnapping] else {
+        guard shouldMonitorDragActions || resizeContext != nil || determineDraggedWindowTask != nil else {
             return
         }
 
         Task {
             previewController.close()
 
-            if let context = resizeContext,
+            if Defaults[.windowSnapping],
+               let context = resizeContext,
                !context.action.direction.isNoOp,
                let window = context.window,
                let initialFrame = initialWindowFrame,
@@ -191,6 +205,7 @@ final class WindowDragManager {
         resizeContext = nil
         didFailToResolveDraggedWindow = false
         initialWindowFrame = nil
+        adjacentWindowResizeController.reset()
         determineDraggedWindowTask?.cancel()
         determineDraggedWindowTask = nil
     }

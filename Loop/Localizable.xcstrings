@@ -25929,6 +25929,22 @@
         }
       }
     },
+    "Resize adjacent windows" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resize adjacent windows"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ridimensiona le finestre adiacenti"
+          }
+        }
+      }
+    },
     "Restore window frame on drag" : {
       "localizations" : {
         "ar" : {

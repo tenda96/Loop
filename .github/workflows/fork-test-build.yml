@@ -1,0 +1,96 @@
+name: Fork Test Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/adjacent-window-resize
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-test-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    name: Test and build unsigned app
+    runs-on: macos-26
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.4.app
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      - name: Resolve Swift packages
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project Loop.xcodeproj \
+            -scheme "Loop (GH ACTIONS)"
+
+      - name: Check Swift formatting
+        run: swiftformat --lint . --reporter github-actions-log
+
+      - name: Run tests
+        run: |
+          xcodebuild test \
+            -project Loop.xcodeproj \
+            -scheme "Loop (GH ACTIONS)" \
+            -destination "platform=macOS" \
+            -derivedDataPath DerivedData \
+            -resultBundlePath dist/LoopTests.xcresult \
+            -skipMacroValidation \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            DEVELOPMENT_TEAM=
+
+      - name: Build development app
+        run: |
+          xcodebuild build \
+            -project Loop.xcodeproj \
+            -scheme "Loop (GH ACTIONS)" \
+            -configuration Development \
+            -destination "platform=macOS" \
+            -derivedDataPath DerivedData \
+            -skipMacroValidation \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            DEVELOPMENT_TEAM=
+
+      - name: Prepare personal test app
+        run: |
+          mkdir -p dist
+          ditto "DerivedData/Build/Products/Development/Loop.app" "dist/Loop Adjacent Test.app"
+          plutil -replace CFBundleDisplayName -string "Loop Adjacent Test" "dist/Loop Adjacent Test.app/Contents/Info.plist"
+          plutil -replace CFBundleName -string "Loop Adjacent Test" "dist/Loop Adjacent Test.app/Contents/Info.plist"
+          plutil -replace CFBundleIdentifier -string "com.tenda96.LoopAdjacentTest" "dist/Loop Adjacent Test.app/Contents/Info.plist"
+          codesign --force --deep --sign - --timestamp=none --entitlements Loop/Loop.entitlements "dist/Loop Adjacent Test.app"
+          codesign --verify --deep --strict --verbose=2 "dist/Loop Adjacent Test.app"
+          ditto -c -k --sequesterRsrc --keepParent "dist/Loop Adjacent Test.app" "dist/Loop-Adjacent-Test.zip"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: Loop-Test-Results
+          path: dist/LoopTests.xcresult
+          if-no-files-found: ignore
+
+      - name: Upload test app
+        uses: actions/upload-artifact@v7
+        with:
+          name: Loop-Adjacent-Test
+          path: dist/Loop-Adjacent-Test.zip
+          if-no-files-found: error
