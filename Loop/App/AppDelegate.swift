@@ -15,7 +15,10 @@ import UserNotifications
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let urlCommandHandler = URLCommandHandler()
 
-    private static let terminateNotificationName = Notification.Name("com.MrKai77.Loop.terminate")
+    /// Keep upstream Loop and custom builds in separate instance-management namespaces.
+    private static var terminateNotificationName: Notification.Name {
+        Notification.Name("\(Bundle.main.bundleID).terminate")
+    }
     private var terminateObserver: Any?
 
     private var launchedAsLoginItem: Bool {

@@ -16,15 +16,22 @@ import Scribe
 @Loggable
 @MainActor
 final class AdjacentWindowResizeController {
+    private struct NeighborSession {
+        let match: AdjacentWindowResizeGeometry.Match
+        let window: Window
+        let properties: Window.ResolvedProperties
+        var effectiveMinimumSize = AdjacentWindowResizeGeometry.fallbackMinimumWindowSize
+    }
+
     private struct Session {
         let sourceWindowID: CGWindowID
-        let match: AdjacentWindowResizeGeometry.Match
-        let neighbor: Window
-        let neighborProperties: Window.ResolvedProperties
+        let edge: AdjacentWindowResizeEdge
+        var neighbors: [NeighborSession]
     }
 
     private var session: Session?
-    private var didFailToCreateSession = false
+    private var sessionCreationAttempts = 0
+    private let maximumSessionCreationAttempts = 5
 
     /// Updates the neighboring window for the most recent source frame.
     /// - Parameters:
@@ -36,7 +43,7 @@ final class AdjacentWindowResizeController {
         initialSourceFrame: CGRect,
         currentSourceFrame: CGRect
     ) {
-        if session == nil, !didFailToCreateSession {
+        if session == nil, sessionCreationAttempts < maximumSessionCreationAttempts {
             createSession(
                 source: source,
                 initialSourceFrame: initialSourceFrame,
@@ -44,56 +51,75 @@ final class AdjacentWindowResizeController {
             )
         }
 
-        guard let session,
-              session.sourceWindowID == source.cgWindowID,
-              let initialFrames = AdjacentWindowResizeGeometry.resolvedFrames(
-                  for: currentSourceFrame,
-                  match: session.match
-              )
+        guard var activeSession = session,
+              activeSession.sourceWindowID == source.cgWindowID
         else {
             return
         }
 
-        apply(initialFrames.neighbor, to: session)
+        var resolvedFrames: [AdjacentWindowResizeGeometry.FramePair?] = Array(
+            repeating: nil,
+            count: activeSession.neighbors.count
+        )
 
-        // Applications enforce their own minimum size after an AX write. Read the result once and,
-        // when it is larger than requested, use that observed span as the effective minimum. This
-        // keeps the neighbor's outer edge fixed and prevents the source from overlapping it.
-        let appliedNeighborFrame = session.neighbor.frame
-        let observedMinimumSize: CGFloat
-        let requestedNeighborSize: CGFloat
-        switch session.match.edge {
-        case .left, .right:
-            observedMinimumSize = appliedNeighborFrame.width
-            requestedNeighborSize = initialFrames.neighbor.width
-        case .top, .bottom:
-            observedMinimumSize = appliedNeighborFrame.height
-            requestedNeighborSize = initialFrames.neighbor.height
+        for index in activeSession.neighbors.indices {
+            var neighbor = activeSession.neighbors[index]
+            guard let frames = AdjacentWindowResizeGeometry.resolvedFrames(
+                for: currentSourceFrame,
+                match: neighbor.match,
+                neighborMinimumSize: neighbor.effectiveMinimumSize
+            ) else {
+                continue
+            }
+
+            apply(frames.neighbor, to: neighbor)
+
+            // Applications enforce their own minimum size after an AX write. Read the result and
+            // retain the real constraint so every member of a stacked group shares one boundary.
+            let appliedFrame = neighbor.window.frame
+            let observedSize = size(of: appliedFrame, for: activeSession.edge)
+            let requestedSize = size(of: frames.neighbor, for: activeSession.edge)
+            if observedSize > requestedSize + 1 {
+                neighbor.effectiveMinimumSize = max(neighbor.effectiveMinimumSize, observedSize)
+                activeSession.neighbors[index] = neighbor
+            }
+
+            resolvedFrames[index] = AdjacentWindowResizeGeometry.resolvedFrames(
+                for: currentSourceFrame,
+                match: neighbor.match,
+                neighborMinimumSize: neighbor.effectiveMinimumSize
+            )
         }
-        let neighborWasClamped = observedMinimumSize > requestedNeighborSize + 1
 
-        let finalFrames: AdjacentWindowResizeGeometry.FramePair
-        if neighborWasClamped,
-           let correctedFrames = AdjacentWindowResizeGeometry.resolvedFrames(
-               for: currentSourceFrame,
-               match: session.match,
-               neighborMinimumSize: observedMinimumSize
-           ) {
-            finalFrames = correctedFrames
-            apply(correctedFrames.neighbor, to: session)
-        } else {
-            finalFrames = initialFrames
+        session = activeSession
+        let correctedSources = resolvedFrames.compactMap { $0?.source }
+
+        guard let firstCorrectedSource = correctedSources.first else {
+            return
+        }
+        let finalSourceFrame = correctedSources.dropFirst().reduce(firstCorrectedSource) {
+            moreRestrictive($0, $1, edge: activeSession.edge)
         }
 
-        if !source.frame.approximatelyEqual(to: finalFrames.source, tolerance: 1) {
-            source.setFrameSynchronously(finalFrames.source)
+        for neighbor in activeSession.neighbors {
+            if let correctedFrames = AdjacentWindowResizeGeometry.resolvedFrames(
+                for: finalSourceFrame,
+                match: neighbor.match,
+                neighborMinimumSize: neighbor.effectiveMinimumSize
+            ) {
+                apply(correctedFrames.neighbor, to: neighbor)
+            }
+        }
+
+        if !source.frame.approximatelyEqual(to: finalSourceFrame, tolerance: 1) {
+            source.setFrameSynchronously(finalSourceFrame)
         }
     }
 
     /// Clears all state at mouse-up or when drag monitoring shuts down.
     func reset() {
         session = nil
-        didFailToCreateSession = false
+        sessionCreationAttempts = 0
     }
 
     private func createSession(
@@ -133,37 +159,75 @@ final class AdjacentWindowResizeController {
             AdjacentWindowResizeGeometry.Candidate(windowID: $0.cgWindowID, frame: $0.frame)
         }
 
-        guard let match = AdjacentWindowResizeGeometry.bestMatch(
+        let configuredGap = PaddingConfiguration.getConfiguredPadding(for: sourceScreen).window
+        let matches = AdjacentWindowResizeGeometry.bestMatches(
             for: initialSourceFrame,
             edge: edge,
-            candidates: geometryCandidates
-        ),
-            let neighbor = candidates.first(where: { $0.cgWindowID == match.windowID })
-        else {
-            didFailToCreateSession = true
+            candidates: geometryCandidates,
+            maximumGap: max(AdjacentWindowResizeGeometry.defaultMaximumGap, configuredGap + 4)
+        )
+
+        let neighbors = matches.compactMap { match -> NeighborSession? in
+            guard let window = candidates.first(where: { $0.cgWindowID == match.windowID }) else {
+                return nil
+            }
+
+            return NeighborSession(
+                match: match,
+                window: window,
+                properties: Window.ResolvedProperties(from: window)
+            )
+        }
+
+        guard !neighbors.isEmpty else {
+            sessionCreationAttempts += 1
             return
         }
 
         session = Session(
             sourceWindowID: source.cgWindowID,
-            match: match,
-            neighbor: neighbor,
-            neighborProperties: Window.ResolvedProperties(from: neighbor)
+            edge: edge,
+            neighbors: neighbors
         )
 
-        log.info("Started adjacent resize with source \(source.cgWindowID) and neighbor \(neighbor.cgWindowID)")
+        let neighborIDs = neighbors.map { String($0.window.cgWindowID) }.joined(separator: ", ")
+        log.info("Started adjacent resize with source \(source.cgWindowID) and neighbors [\(neighborIDs)]")
     }
 
-    private func apply(_ frame: CGRect, to session: Session) {
-        guard !session.neighbor.frame.approximatelyEqual(to: frame, tolerance: 1) else {
+    private func apply(_ frame: CGRect, to neighbor: NeighborSession) {
+        guard !neighbor.window.frame.approximatelyEqual(to: frame, tolerance: 1) else {
             return
         }
 
-        let sizeFirst = session.match.edge == .right || session.match.edge == .bottom
-        session.neighbor.setFrameSynchronously(
+        let sizeFirst = neighbor.match.edge == .right || neighbor.match.edge == .bottom
+        neighbor.window.setFrameSynchronously(
             frame,
             sizeFirst: sizeFirst,
-            resolvedProperties: session.neighborProperties
+            resolvedProperties: neighbor.properties
         )
+    }
+
+    private func size(of frame: CGRect, for edge: AdjacentWindowResizeEdge) -> CGFloat {
+        switch edge {
+        case .left, .right: frame.width
+        case .top, .bottom: frame.height
+        }
+    }
+
+    private func moreRestrictive(
+        _ lhs: CGRect,
+        _ rhs: CGRect,
+        edge: AdjacentWindowResizeEdge
+    ) -> CGRect {
+        switch edge {
+        case .right:
+            lhs.maxX <= rhs.maxX ? lhs : rhs
+        case .left:
+            lhs.minX >= rhs.minX ? lhs : rhs
+        case .bottom:
+            lhs.maxY <= rhs.maxY ? lhs : rhs
+        case .top:
+            lhs.minY >= rhs.minY ? lhs : rhs
+        }
     }
 }

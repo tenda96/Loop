@@ -27,7 +27,9 @@ The user will perform application-level testing. Before handoff, the project mus
 
 ## Status
 
-Current phase: second-pass build passed remote CI and works substantially better in user testing; reliability and multi-window follow-up work has been reviewed but not yet implemented.
+Current phase: third-pass stability changes are implemented locally and pass the standalone geometry suite; the installed second-pass build reproduced the shared-boundary source-selection bug, while remote Xcode validation of the fix is still pending.
+
+The user approved a third stability pass focused on reliability across layouts, smoother live animation, and direct testing on the installed Mac build.
 
 ### Completed
 
@@ -54,12 +56,10 @@ Current phase: second-pass build passed remote CI and works substantially better
 
 ### Next steps
 
-1. Isolate the custom build's inter-instance termination notification from upstream Loop.
-2. Make drag-source detection resilient when the cursor is exactly on a shared boundary and retry transient failed matches.
-3. Coalesce high-frequency drag events to reduce AX writes, jitter, and CPU use.
-4. Extend pairing from one neighbor to every window sharing the dragged edge, including stacked layouts.
-5. Make smart placement validate the entire target region instead of considering only one opposing obstacle.
-6. Decide whether stable local signing is worthwhile to preserve Accessibility authorization across future builds.
+1. Run the third-pass branch through remote SwiftFormat and full Xcode build-for-testing.
+2. Package the new personal ARM64 app and hand it to the user for application-level testing.
+3. Verify rapid reversals, strongly constrained apps, multi-display behavior, and two-neighbor groups in the new build.
+4. Decide whether stable local signing is worthwhile to preserve Accessibility authorization across future builds.
 
 ## Review backlog after second user test
 
@@ -71,6 +71,49 @@ Current phase: second-pass build passed remote CI and works substantially better
 - **Medium:** adaptive side placement selects one sufficiently tall opposing window but does not prove that the complete destination rectangle is free of other windows. Multi-row or crowded layouts need region-based occupancy checks.
 - **Medium:** the 32-point adjacency distance and 50% perpendicular overlap thresholds are fixed. They should be derived from padding/layout geometry or made advanced preferences if real applications expose a need.
 - **Known limitation:** corner drags deliberately change two edges and are not linked; GUI runtime tests remain manual because the hosted GitHub runner cannot establish the app-hosted XCTest connection.
+
+## Third-pass stability checklist
+
+### Pair detection and interaction
+
+- [ ] Drag the shared edge from either member of a left/right pair.
+- [ ] Drag the shared edge from either member of a top/bottom pair.
+- [x] Resolve the actual changing window when the pointer is exactly on the shared boundary.
+- [x] Retry transient AX/window-list misses during the opening frames of a drag.
+- [x] Preserve the final coordinated frame on mouse-up after rapid movement.
+- [ ] Reverse direction repeatedly during one drag without oscillation or stale frames.
+- [x] Leave corner resizes safe and unlinked rather than misclassifying them.
+
+### Geometry and constraints
+
+- [x] Preserve zero, configured, and application-specific gaps within the supported tolerance.
+- [ ] Respect minimum sizes of both common and strongly constrained applications.
+- [x] Coordinate two non-overlapping neighbors stacked along one shared edge.
+- [x] Avoid selecting overlapping/background candidates for the same edge region.
+- [x] Ignore candidates beyond the source display, current visible Space, fullscreen, minimized, excluded, or non-resizable state.
+- [x] Derive adjacency tolerance from configured padding while retaining a conservative floor.
+
+### Smoothness and performance
+
+- [x] Coalesce raw mouse-drag events and process only the newest pending frame.
+- [x] Avoid rewriting the source window unless a neighbor minimum-size clamp requires correction.
+- [x] Avoid redundant neighbor frame writes within rounding tolerance.
+- [ ] Confirm no visible lag, oscillation, or post-mouse-up catch-up during fast drags.
+
+### Placement and application lifecycle
+
+- [x] Keep custom and upstream Loop instances from terminating each other.
+- [x] Verify left/right smart placement with asymmetric existing widths and configured padding.
+- [x] Reject or safely fall back when another visible window occupies the proposed destination.
+- [ ] Verify no upstream update prompt and no loss of settings after relaunch.
+- [ ] Check Accessibility authorization behavior when replacing the test build.
+
+### Validation matrix
+
+- [x] Standalone geometry smoke suite.
+- [ ] Full Xcode compilation and test-target compilation in remote CI.
+- [ ] Disposable two- and three-window runtime layouts on this Mac.
+- [ ] Manual application combinations: Finder, browser, TextEdit, and at least one app with a larger minimum size.
 
 ## MVP acceptance criteria
 
@@ -127,6 +170,12 @@ Current phase: second-pass build passed remote CI and works substantially better
 - 2026-09-16: second-pass remote run `35098750305` resolved dependencies successfully but stopped before compilation because SwiftFormat's `preferKeyPath` rule rejected the new identity `compactMap` closure. Replaced it with the required `compactMap(\.self)` form; no runtime or geometry logic changed.
 - 2026-09-16: corrected remote run `35103814641` passed SwiftFormat, full application/test-target compilation, standalone four-edge/adaptive-placement checks, ARM64 Development build, ad-hoc signature verification, and artifact upload. The user installed/tested the result and reported that it works substantially better.
 - 2026-09-16: completed a post-test code review without changing runtime code. Prioritized custom/upstream instance isolation, resilient source/pair detection, drag-event coalescing, multi-neighbor edge groups, and full-region smart-placement validation.
+- 2026-09-16: implemented the third-pass stability work. Instance termination notifications now use the active bundle ID; drag-source selection snapshots every window near mouse-down and chooses the frame that actually changes; drag events are coalesced; mouse-up waits for pending work and rejects stale generations; failed adjacency discovery is retried; and neighboring application minimum sizes are cached for the remainder of the drag.
+- 2026-09-16: extended one-to-one sessions to non-overlapping groups sharing the same boundary, including vertically stacked and horizontally side-by-side neighbors. Candidate filtering continues to require the current display, on-screen Space, resizability, and visible/non-fullscreen state. Configured window padding now raises the allowed adjacency distance above the conservative 32-point floor when necessary.
+- 2026-09-16: upgraded occupied-space side placement to combine multiple windows on one opposing boundary, validate the complete destination, select the largest safe vertical slice when partially occupied, and report a fully occupied destination separately. The frame resolver now keeps the source window in place for a blocked destination instead of falling back to an overlapping standard half.
+- 2026-09-16: the expanded standalone suite passed against the macOS 26.2 SDK. It now covers four-edge inference, gaps, minimum-size clamping, stacked and side-by-side neighbor groups, background-window rejection, different-boundary rejection, left/right smart placement, partial occupancy, and complete blockage. All changed Swift files passed frontend parsing, the workflow parsed as YAML, the string catalog parsed as JSON, and `git diff --check` passed.
+- 2026-09-16: created a disposable two-window AppKit harness with measured frames and ran it against the installed second-pass build. With adjacent resizing enabled and system window-manager integration disabled, dragging the right window's shared left edge by 100 points changed it from `x=1685, width=535` to `x=1785, width=435`, while the left window remained `x=1220, width=456`. This reproduces the intermittent shared-boundary bug: the installed build can resolve the stationary window at mouse-down. The third-pass changing-frame selection directly addresses this case, but must be runtime-verified in the next artifact.
+- 2026-09-16: found `resizeAdjacentWindows` stored as false before the harness test and explicitly restored it to true for `com.tenda96.LoopAdjacentTest`; `useSystemWindowManagerWhenAvailable` remains false. This preference state is now confirmed after relaunch.
 
 ## Environment blocker
 

@@ -91,6 +91,27 @@ enum AdjacentWindowResizeGeometry {
         overlapAllowance: CGFloat = defaultOverlapAllowance,
         minimumPerpendicularOverlapRatio: CGFloat = defaultMinimumPerpendicularOverlapRatio
     ) -> Match? {
+        bestMatches(
+            for: sourceFrame,
+            edge: edge,
+            candidates: candidates,
+            maximumGap: maximumGap,
+            overlapAllowance: overlapAllowance,
+            minimumPerpendicularOverlapRatio: minimumPerpendicularOverlapRatio
+        ).first
+    }
+
+    /// Returns every non-overlapping candidate that shares the closest facing boundary.
+    /// This allows one large source window to resize multiple stacked neighbors as one group while
+    /// ignoring background windows that occupy the same perpendicular region as a frontmost match.
+    static func bestMatches(
+        for sourceFrame: CGRect,
+        edge: AdjacentWindowResizeEdge,
+        candidates: [Candidate],
+        maximumGap: CGFloat = defaultMaximumGap,
+        overlapAllowance: CGFloat = defaultOverlapAllowance,
+        minimumPerpendicularOverlapRatio: CGFloat = defaultMinimumPerpendicularOverlapRatio
+    ) -> [Match] {
         let eligible = candidates.compactMap { candidate -> (candidate: Candidate, gap: CGFloat, overlap: CGFloat)? in
             let gap = gap(from: sourceFrame, to: candidate.frame, edge: edge)
             guard gap >= -overlapAllowance, gap <= maximumGap else {
@@ -122,16 +143,37 @@ enum AdjacentWindowResizeGeometry {
 
             return lhs.candidate.windowID < rhs.candidate.windowID
         }) else {
-            return nil
+            return []
         }
 
-        return Match(
-            windowID: best.candidate.windowID,
-            edge: edge,
-            initialSourceFrame: sourceFrame,
-            initialNeighborFrame: best.candidate.frame,
-            gap: best.gap
-        )
+        let sharedBoundaryCandidates = eligible.filter {
+            abs($0.gap - best.gap) <= overlapAllowance
+        }
+
+        var selected: [(candidate: Candidate, gap: CGFloat, overlap: CGFloat)] = []
+        for candidate in sharedBoundaryCandidates {
+            let duplicatesVisibleRegion = selected.contains {
+                perpendicularOverlapRatio(
+                    candidate.candidate.frame,
+                    $0.candidate.frame,
+                    edge: edge
+                ) >= minimumPerpendicularOverlapRatio
+            }
+
+            if !duplicatesVisibleRegion {
+                selected.append(candidate)
+            }
+        }
+
+        return selected.map {
+            Match(
+                windowID: $0.candidate.windowID,
+                edge: edge,
+                initialSourceFrame: sourceFrame,
+                initialNeighborFrame: $0.candidate.frame,
+                gap: $0.gap
+            )
+        }
     }
 
     /// Resolves both frames for the current shared-edge position.
@@ -247,5 +289,17 @@ enum AdjacentWindowResizeGeometry {
         case .top, .bottom:
             min(lhs.width, rhs.width)
         }
+    }
+
+    private static func perpendicularOverlapRatio(
+        _ lhs: CGRect,
+        _ rhs: CGRect,
+        edge: AdjacentWindowResizeEdge
+    ) -> CGFloat {
+        let span = perpendicularSpan(lhs, rhs, edge: edge)
+        guard span > 0 else {
+            return 0
+        }
+        return perpendicularOverlap(lhs, rhs, edge: edge) / span
     }
 }

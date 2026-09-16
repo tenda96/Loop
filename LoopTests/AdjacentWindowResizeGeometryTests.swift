@@ -73,6 +73,86 @@ struct AdjacentWindowResizeGeometryTests {
         #expect(match.gap == 10)
     }
 
+    @Test func choosesTwoStackedNeighborsOnTheSameBoundary() {
+        let source = CGRect(x: 0, y: 0, width: 500, height: 800)
+        let top = AdjacentWindowResizeGeometry.Candidate(
+            windowID: 2,
+            frame: CGRect(x: 510, y: 0, width: 500, height: 395)
+        )
+        let bottom = AdjacentWindowResizeGeometry.Candidate(
+            windowID: 3,
+            frame: CGRect(x: 510, y: 405, width: 500, height: 395)
+        )
+
+        let matches = AdjacentWindowResizeGeometry.bestMatches(
+            for: source,
+            edge: .right,
+            candidates: [top, bottom]
+        )
+
+        #expect(matches.map(\.windowID) == [2, 3])
+    }
+
+    @Test func choosesTwoSideBySideNeighborsOnTheSameHorizontalBoundary() {
+        let source = CGRect(x: 0, y: 0, width: 1000, height: 400)
+        let left = AdjacentWindowResizeGeometry.Candidate(
+            windowID: 2,
+            frame: CGRect(x: 0, y: 410, width: 495, height: 390)
+        )
+        let right = AdjacentWindowResizeGeometry.Candidate(
+            windowID: 3,
+            frame: CGRect(x: 505, y: 410, width: 495, height: 390)
+        )
+
+        let matches = AdjacentWindowResizeGeometry.bestMatches(
+            for: source,
+            edge: .bottom,
+            candidates: [left, right]
+        )
+
+        #expect(matches.map(\.windowID) == [2, 3])
+    }
+
+    @Test func doesNotMixNeighborsFromDifferentBoundaries() {
+        let source = CGRect(x: 0, y: 0, width: 500, height: 800)
+        let nearest = AdjacentWindowResizeGeometry.Candidate(
+            windowID: 2,
+            frame: CGRect(x: 510, y: 0, width: 500, height: 395)
+        )
+        let differentBoundary = AdjacentWindowResizeGeometry.Candidate(
+            windowID: 3,
+            frame: CGRect(x: 525, y: 405, width: 500, height: 395)
+        )
+
+        let matches = AdjacentWindowResizeGeometry.bestMatches(
+            for: source,
+            edge: .right,
+            candidates: [nearest, differentBoundary]
+        )
+
+        #expect(matches.map(\.windowID) == [2])
+    }
+
+    @Test func ignoresAnOverlappingBackgroundCandidateOnTheSameBoundary() {
+        let source = CGRect(x: 0, y: 0, width: 500, height: 800)
+        let front = AdjacentWindowResizeGeometry.Candidate(
+            windowID: 2,
+            frame: CGRect(x: 510, y: 0, width: 500, height: 800)
+        )
+        let background = AdjacentWindowResizeGeometry.Candidate(
+            windowID: 3,
+            frame: CGRect(x: 510, y: 0, width: 500, height: 800)
+        )
+
+        let matches = AdjacentWindowResizeGeometry.bestMatches(
+            for: source,
+            edge: .right,
+            candidates: [front, background]
+        )
+
+        #expect(matches.map(\.windowID) == [2])
+    }
+
     @Test func rejectsWindowsOutsideTheMaximumGap() {
         let source = CGRect(x: 0, y: 0, width: 500, height: 700)
         let candidate = AdjacentWindowResizeGeometry.Candidate(
@@ -217,5 +297,89 @@ struct AdjacentWindowResizeGeometryTests {
                 candidates: [shortWindow]
             ) == nil
         )
+    }
+
+    @Test func stackedLeftWindowsCanDefineOneAvailableRightRegion() throws {
+        let bounds = CGRect(x: 0, y: 0, width: 1200, height: 800)
+        let candidates = [
+            AvailableSidePlacementGeometry.Candidate(
+                windowID: 2,
+                frame: CGRect(x: 0, y: 0, width: 450, height: 395)
+            ),
+            AvailableSidePlacementGeometry.Candidate(
+                windowID: 3,
+                frame: CGRect(x: 0, y: 405, width: 450, height: 395)
+            )
+        ]
+
+        let frame = try #require(
+            AvailableSidePlacementGeometry.targetFrame(
+                for: .right,
+                in: bounds,
+                candidates: candidates,
+                windowGap: 10
+            )
+        )
+
+        #expect(frame == CGRect(x: 455, y: 0, width: 745, height: 800))
+    }
+
+    @Test func occupiedTargetUsesTheLargestFreeVerticalSlice() throws {
+        let bounds = CGRect(x: 0, y: 0, width: 1200, height: 800)
+        let candidates = [
+            AvailableSidePlacementGeometry.Candidate(
+                windowID: 2,
+                frame: CGRect(x: 0, y: 0, width: 450, height: 800)
+            ),
+            AvailableSidePlacementGeometry.Candidate(
+                windowID: 3,
+                frame: CGRect(x: 455, y: 0, width: 745, height: 300)
+            )
+        ]
+
+        let frame = try #require(
+            AvailableSidePlacementGeometry.targetFrame(
+                for: .right,
+                in: bounds,
+                candidates: candidates,
+                windowGap: 10
+            )
+        )
+
+        #expect(frame == CGRect(x: 455, y: 300, width: 745, height: 500))
+    }
+
+    @Test func availableLeftPlacementMirrorsTheRightPlacement() throws {
+        let bounds = CGRect(x: 0, y: 0, width: 1200, height: 800)
+        let rightWindow = AvailableSidePlacementGeometry.Candidate(
+            windowID: 2,
+            frame: CGRect(x: 700, y: 0, width: 500, height: 800)
+        )
+
+        let frame = try #require(
+            AvailableSidePlacementGeometry.targetFrame(
+                for: .left,
+                in: bounds,
+                candidates: [rightWindow],
+                windowGap: 10
+            )
+        )
+
+        #expect(frame == CGRect(x: 0, y: 0, width: 695, height: 800))
+    }
+
+    @Test func fullyOccupiedTargetIsReportedAsBlocked() {
+        let bounds = CGRect(x: 0, y: 0, width: 1200, height: 800)
+        let resolution = AvailableSidePlacementGeometry.resolution(
+            for: .right,
+            in: bounds,
+            candidates: [
+                .init(windowID: 2, frame: CGRect(x: 0, y: 0, width: 450, height: 800)),
+                .init(windowID: 3, frame: CGRect(x: 455, y: 0, width: 745, height: 800))
+            ],
+            windowGap: 10
+        )
+
+        #expect(resolution == .blocked)
     }
 }

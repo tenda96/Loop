@@ -5,11 +5,15 @@ enum AdjacentWindowResizeGeometrySmoke {
     static func main() {
         detectsMovingEdges()
         choosesClosestAlignedNeighbor()
+        choosesStackedNeighbors()
+        choosesSideBySideNeighbors()
         preservesRightSharedBoundary()
         preservesLeftSharedBoundary()
         preservesBottomSharedBoundary()
         clampsNeighborMinimumWidth()
         fillsAvailableRightSide()
+        avoidsOccupiedRightSide()
+        identifiesFullyBlockedRightSide()
 
         print("Adjacent window resize geometry checks passed.")
     }
@@ -72,6 +76,34 @@ enum AdjacentWindowResizeGeometrySmoke {
 
         expect(match?.windowID == 2, "The closest aligned neighbor was not selected.")
         expect(match?.gap == 10, "The original window gap was not captured.")
+    }
+
+    private static func choosesStackedNeighbors() {
+        let source = CGRect(x: 0, y: 0, width: 500, height: 800)
+        let matches = AdjacentWindowResizeGeometry.bestMatches(
+            for: source,
+            edge: .right,
+            candidates: [
+                .init(windowID: 2, frame: CGRect(x: 510, y: 0, width: 500, height: 395)),
+                .init(windowID: 3, frame: CGRect(x: 510, y: 405, width: 500, height: 395))
+            ]
+        )
+
+        expect(matches.map(\.windowID) == [2, 3], "Stacked neighbors were not grouped.")
+    }
+
+    private static func choosesSideBySideNeighbors() {
+        let source = CGRect(x: 0, y: 0, width: 1000, height: 400)
+        let matches = AdjacentWindowResizeGeometry.bestMatches(
+            for: source,
+            edge: .bottom,
+            candidates: [
+                .init(windowID: 2, frame: CGRect(x: 0, y: 410, width: 495, height: 390)),
+                .init(windowID: 3, frame: CGRect(x: 505, y: 410, width: 495, height: 390))
+            ]
+        )
+
+        expect(matches.map(\.windowID) == [2, 3], "Side-by-side neighbors were not grouped.")
     }
 
     private static func preservesRightSharedBoundary() {
@@ -167,6 +199,36 @@ enum AdjacentWindowResizeGeometrySmoke {
 
         expect(frame?.minX == 455, "Right placement ignored the existing left window.")
         expect(frame?.maxX == bounds.maxX, "Right placement did not reach the screen edge.")
+    }
+
+    private static func avoidsOccupiedRightSide() {
+        let bounds = CGRect(x: 0, y: 0, width: 1200, height: 800)
+        let frame = AvailableSidePlacementGeometry.targetFrame(
+            for: .right,
+            in: bounds,
+            candidates: [
+                .init(windowID: 2, frame: CGRect(x: 0, y: 0, width: 450, height: 800)),
+                .init(windowID: 3, frame: CGRect(x: 455, y: 0, width: 745, height: 300))
+            ],
+            windowGap: 10
+        )
+
+        expect(frame == CGRect(x: 455, y: 300, width: 745, height: 500), "Occupied target space was not avoided.")
+    }
+
+    private static func identifiesFullyBlockedRightSide() {
+        let bounds = CGRect(x: 0, y: 0, width: 1200, height: 800)
+        let resolution = AvailableSidePlacementGeometry.resolution(
+            for: .right,
+            in: bounds,
+            candidates: [
+                .init(windowID: 2, frame: CGRect(x: 0, y: 0, width: 450, height: 800)),
+                .init(windowID: 3, frame: CGRect(x: 455, y: 0, width: 745, height: 800))
+            ],
+            windowGap: 10
+        )
+
+        expect(resolution == .blocked, "A fully occupied target was not reported as blocked.")
     }
 
     private static func expect(

@@ -145,12 +145,15 @@ extension WindowFrameResolver {
         var result: CGRect = .zero
 
         if Defaults[.useAvailableSpaceForSidePlacement],
-           let side = direction.availableSpacePlacementSide,
-           let availableFrame = getAvailableSidePlacementFrame(
-               side: side,
-               context: context
-           ) {
-            result = availableFrame
+           let side = direction.availableSpacePlacementSide {
+            switch getAvailableSidePlacementResolution(side: side, context: context) {
+            case let .available(availableFrame):
+                result = availableFrame
+            case .blocked:
+                result = properties?.frame ?? applyFrameMultiplyValues(for: action, to: bounds)
+            case .noLayout:
+                result = applyFrameMultiplyValues(for: action, to: bounds)
+            }
 
         } else if direction.frameMultiplyValues != nil {
             result = applyFrameMultiplyValues(for: action, to: bounds)
@@ -267,14 +270,14 @@ extension WindowFrameResolver {
         )
     }
 
-    private static func getAvailableSidePlacementFrame(
+    private static func getAvailableSidePlacementResolution(
         side: AvailableSidePlacementGeometry.Side,
         context: ResizeContext
-    ) -> CGRect? {
+    ) -> AvailableSidePlacementGeometry.Resolution {
         guard let source = context.window,
               let sourceScreen = context.screen
         else {
-            return nil
+            return .noLayout
         }
 
         let candidates = WindowUtility.windowList().compactMap { candidate -> AvailableSidePlacementGeometry.Candidate? in
@@ -292,7 +295,7 @@ extension WindowFrameResolver {
             return .init(windowID: candidate.cgWindowID, frame: candidate.frame)
         }
 
-        return AvailableSidePlacementGeometry.targetFrame(
+        return AvailableSidePlacementGeometry.resolution(
             for: side,
             in: context.paddedBounds,
             candidates: candidates,
