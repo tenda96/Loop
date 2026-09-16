@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static var terminateNotificationName: Notification.Name {
         Notification.Name("\(Bundle.main.bundleID).terminate")
     }
+
     private var terminateObserver: Any?
 
     private var launchedAsLoginItem: Bool {

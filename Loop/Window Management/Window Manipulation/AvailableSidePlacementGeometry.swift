@@ -118,7 +118,7 @@ enum AvailableSidePlacementGeometry {
         }
 
         let halfGap = max(0, windowGap) / 2
-        let fullTarget: CGRect = switch side {
+        let fullTarget = switch side {
         case .right:
             CGRect(
                 x: sharedBoundary + halfGap,
