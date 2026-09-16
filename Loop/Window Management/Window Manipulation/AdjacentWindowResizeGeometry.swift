@@ -69,7 +69,7 @@ enum AdjacentWindowResizeGeometry {
             abs(currentFrame.maxX - initialFrame.maxX) > tolerance ? .right : nil,
             abs(currentFrame.minY - initialFrame.minY) > tolerance ? .top : nil,
             abs(currentFrame.maxY - initialFrame.maxY) > tolerance ? .bottom : nil
-        ].compactMap { $0 }
+        ].compactMap(\.self)
 
         return changedEdges.count == 1 ? changedEdges[0] : nil
     }
