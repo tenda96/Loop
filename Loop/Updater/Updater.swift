@@ -70,6 +70,10 @@ final class Updater: ObservableObject {
     }
 
     private static func checkIfUpdatesEnabled() -> Bool {
+        guard !Bundle.main.isPersonalTestBuild else {
+            return false
+        }
+
         if let env = ProcessInfo.processInfo.environment["LOOP_SKIP_UPDATE_CHECK"],
            env == "1" || env.lowercased() == "true" {
             return false
@@ -176,6 +180,12 @@ final class Updater: ObservableObject {
 
     /// Pulls the latest release information from GitHub and updates the app state accordingly.
     func fetchLatestInfo(bypassUpdatesEnabled: Bool = false) async {
+        guard !Bundle.main.isPersonalTestBuild else {
+            updateState = .unavailable
+            log.info("Updates are disabled for this personal test build.")
+            return
+        }
+
         // Don't run update checks while actively downloading
         if downloader.isDownloading == true {
             return

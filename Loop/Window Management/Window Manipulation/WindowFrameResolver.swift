@@ -144,7 +144,15 @@ extension WindowFrameResolver {
         let direction = action.direction
         var result: CGRect = .zero
 
-        if direction.frameMultiplyValues != nil {
+        if Defaults[.useAvailableSpaceForSidePlacement],
+           let side = direction.availableSpacePlacementSide,
+           let availableFrame = getAvailableSidePlacementFrame(
+               side: side,
+               context: context
+           ) {
+            result = availableFrame
+
+        } else if direction.frameMultiplyValues != nil {
             result = applyFrameMultiplyValues(for: action, to: bounds)
 
         } else if direction.willAdjustSize {
@@ -256,6 +264,39 @@ extension WindowFrameResolver {
             y: bounds.origin.y + (bounds.height * frameMultiplyValues.minY),
             width: bounds.width * frameMultiplyValues.width,
             height: bounds.height * frameMultiplyValues.height
+        )
+    }
+
+    private static func getAvailableSidePlacementFrame(
+        side: AvailableSidePlacementGeometry.Side,
+        context: ResizeContext
+    ) -> CGRect? {
+        guard let source = context.window,
+              let sourceScreen = context.screen
+        else {
+            return nil
+        }
+
+        let candidates = WindowUtility.windowList().compactMap { candidate -> AvailableSidePlacementGeometry.Candidate? in
+            guard candidate.cgWindowID != source.cgWindowID,
+                  !candidate.isOwnWindow,
+                  !candidate.isAppExcluded,
+                  !candidate.minimized,
+                  !candidate.fullscreen,
+                  let candidateScreen = ScreenUtility.screenContaining(candidate),
+                  candidateScreen.isSameScreen(sourceScreen)
+            else {
+                return nil
+            }
+
+            return .init(windowID: candidate.cgWindowID, frame: candidate.frame)
+        }
+
+        return AvailableSidePlacementGeometry.targetFrame(
+            for: side,
+            in: context.paddedBounds,
+            candidates: candidates,
+            windowGap: context.padding.window
         )
     }
 

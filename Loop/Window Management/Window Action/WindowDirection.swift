@@ -118,6 +118,14 @@ enum WindowDirection: String, CaseIterable, Identifiable, Codable {
     var willCenter: Bool { [.center, .macOSCenter, .verticalCenterHalf, .horizontalCenterHalf].contains(self) }
     var isCustomizable: Bool { [.custom, .stash].contains(self) }
 
+    var availableSpacePlacementSide: AvailableSidePlacementGeometry.Side? {
+        switch self {
+        case .leftHalf: .left
+        case .rightHalf: .right
+        default: nil
+        }
+    }
+
     var hasRadialMenuAngle: Bool {
         let noAngleActions: [WindowDirection] = [.noAction, .noSelection, .minimize, .minimizeOthers, .hide, .initialFrame, .undo, .cycle]
         return !(noAngleActions.contains(self) || shouldFillRadialMenu || willChangeScreen || willChangeSpace || willAdjustSize || willShrink || willGrow || willMove || willFocusWindow)

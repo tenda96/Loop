@@ -27,7 +27,7 @@ The user will perform application-level testing. Before handoff, the project mus
 
 ## Status
 
-Current phase: first testable ARM64 build complete, installed, and launched; awaiting the user's application-level feedback.
+Current phase: second-pass plan approved and implemented locally; validation is in progress before the next remote build.
 
 ### Completed
 
@@ -54,10 +54,10 @@ Current phase: first testable ARM64 build complete, installed, and launched; awa
 
 ### Next steps
 
-1. Have the user enable **Resize adjacent windows** under Loop's Behavior settings.
-2. Test two horizontally adjacent windows on the same display by dragging their shared vertical boundary in both directions.
-3. Collect the affected applications, expected behavior, observed behavior, and any overlap/jitter/minimum-size issue.
-4. Refine the implementation from that feedback before expanding to vertical or multi-window layouts.
+1. Run formatting, parsing, JSON, standalone geometry, and diff checks for the second pass.
+2. Push the second-pass implementation and run remote Xcode CI.
+3. Resolve any full-toolchain findings without regressing the successful first build.
+4. Install the resulting ARM64 test app and request focused user feedback.
 
 ## MVP acceptance criteria
 
@@ -104,6 +104,13 @@ Current phase: first testable ARM64 build complete, installed, and launched; awa
 - 2026-09-15: fourth remote run `34974767088` passed package resolution, SwiftFormat, full application/test-target compilation, and the standalone adjacent-resize geometry smoke suite. Only the later Development artifact build failed: it reused the Debug build's `DerivedData` while requesting a universal arm64/x86_64 product, producing corrupted or architecture-incompatible dependency modules and missing x86_64 Loop modules. Isolated the artifact build in `BuildDerivedData` and restricted the personal test package to arm64, matching the user's Apple Silicon Mac.
 - 2026-09-15: fifth remote run `34977633964` succeeded end to end: dependency resolution, SwiftFormat, full application and test-target compilation, standalone adjacent-resize checks, ARM64 Development app build, ad-hoc signing, verification, and artifact upload all passed.
 - 2026-09-15: downloaded `Loop-Adjacent-Test.zip` to `artifacts/run-34977633964`, extracted it, confirmed the packaged app's signature is valid, verified its `arm64` executable and test-only bundle ID `com.tenda96.LoopAdjacentTest`, and matched the installed `/Applications/Loop Adjacent Test.app` executable byte-for-byte to the CI artifact. The installed app launched successfully and remained active as process `9344`; application-level behavior is now handed to the user for testing.
+- 2026-09-15: initial user test confirmed that the custom app launches without problems. It still offered an upstream Loop update and did not provide the expected occupied-space-aware placement or linked resize behavior.
+- 2026-09-15: diagnosed the update prompt: the inherited updater explicitly queries `MrKai77/Loop` GitHub releases, and updates remain enabled for the custom bundle. Diagnosed the missing linked resize: the test bundle has `useSystemWindowManagerWhenAvailable = true`, while `resizeAdjacentWindows` has no stored true value and therefore remains at its false default; the current Behavior UI also hides the adjacent-resize toggle whenever system window-manager integration is enabled. The runtime controller consequently never executed during the user's test.
+- 2026-09-15: confirmed that upstream's existing `Fill Available Space` action is not directional. It searches for a globally largest non-overlapping rectangle and ignores windows already intersecting the target's current frame, so it does not implement “place on the right and consume exactly the region left beside the existing window.” A dedicated configurable side-placement policy is required.
+- 2026-09-15: user approved the second-pass plan and confirmed that linked horizontal resizing works after disabling macOS window-manager integration and enabling the previously hidden toggle, but remains inconsistent in some arrangements. The user also requested resizing from additional sides.
+- 2026-09-15: implemented second-pass changes locally: personal test builds now disable all updater checks; adjacent resizing and occupied-space side placement are independently visible Behavior settings and default on for the personal bundle; left/right half actions can use the boundary of a qualifying full-height window on the opposite side, falling back to standard halves; system window-manager dispatch is bypassed only for those adaptive side actions; resize capture begins on mouse-down; and linked resizing now supports left, right, top, and bottom shared edges.
+- 2026-09-15: expanded XCTest and standalone smoke coverage for four-edge geometry, minimum-size clamping, adaptive right-side placement, and fallback behavior. The standalone Swift 6.2.3 geometry suite passed against the matching macOS 26.2 SDK; all changed Swift sources passed frontend parsing and the string catalog remained valid JSON.
+- 2026-09-16: resumed from the persistent log and repeated the complete local preflight. Four-edge and adaptive-placement smoke checks passed; every changed Swift source parsed; the workflow parsed as YAML; the localization catalog parsed as JSON; and `git diff --check` passed. The second pass is ready for remote Xcode validation.
 
 ## Environment blocker
 

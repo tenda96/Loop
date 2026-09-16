@@ -59,15 +59,17 @@ enum WindowEngine {
         } else {
             false
         }
+        let requiresLoopSidePlacement = Defaults[.useAvailableSpaceForSidePlacement] &&
+            [.leftHalf, .rightHalf].contains(context.action.direction)
 
-        if Defaults[.focusWindowOnResize] || useSystemWM {
+        if Defaults[.focusWindowOnResize] || (useSystemWM && !requiresLoopSidePlacement) {
             await window.focus()
         }
 
         let finalFrame: CGRect
 
         // Attempt system window manager if possible
-        if !willChangeScreens, useSystemWM,
+        if !willChangeScreens, useSystemWM, !requiresLoopSidePlacement,
            #available(macOS 15, *),
            await resizeWithSystemWindowManager(window: window, to: context.action) {
             finalFrame = window.frame

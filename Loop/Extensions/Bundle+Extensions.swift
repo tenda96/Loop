@@ -8,6 +8,12 @@
 import Foundation
 
 extension Bundle {
+    static let personalTestBundleIdentifier = "com.tenda96.LoopAdjacentTest"
+
+    var isPersonalTestBuild: Bool {
+        bundleID == Self.personalTestBundleIdentifier
+    }
+
     var appName: String {
         getInfo("CFBundleName") ?? "⚠️"
     }

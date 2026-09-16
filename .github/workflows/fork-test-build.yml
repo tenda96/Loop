@@ -60,6 +60,7 @@ jobs:
           xcrun swiftc \
             -parse-as-library \
             "Loop/Window Management/Window Manipulation/AdjacentWindowResizeGeometry.swift" \
+            "Loop/Window Management/Window Manipulation/AvailableSidePlacementGeometry.swift" \
             ".github/scripts/AdjacentWindowResizeGeometrySmoke.swift" \
             -o dist/adjacent-resize-geometry-smoke
           dist/adjacent-resize-geometry-smoke

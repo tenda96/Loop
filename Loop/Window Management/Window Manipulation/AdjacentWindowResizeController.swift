@@ -8,10 +8,10 @@
 import AppKit
 import Scribe
 
-/// Coordinates one neighboring window with a native horizontal resize performed by the user.
+/// Coordinates one neighboring window with a native resize performed by the user.
 ///
 /// A session is created only after `WindowDragManager` has confirmed that the source window is
-/// changing width without changing height. Candidate discovery happens once per mouse drag; later
+/// changing one edge. Candidate discovery happens once per mouse drag; later
 /// events reuse the captured frames to avoid repeated WindowServer and Accessibility enumeration.
 @Loggable
 @MainActor
@@ -57,18 +57,27 @@ final class AdjacentWindowResizeController {
         apply(initialFrames.neighbor, to: session)
 
         // Applications enforce their own minimum size after an AX write. Read the result once and,
-        // when it is wider than requested, use that observed width as the effective minimum. This
+        // when it is larger than requested, use that observed span as the effective minimum. This
         // keeps the neighbor's outer edge fixed and prevents the source from overlapping it.
         let appliedNeighborFrame = session.neighbor.frame
-        let observedMinimumWidth = appliedNeighborFrame.width
-        let neighborWasClamped = observedMinimumWidth > initialFrames.neighbor.width + 1
+        let observedMinimumSize: CGFloat
+        let requestedNeighborSize: CGFloat
+        switch session.match.edge {
+        case .left, .right:
+            observedMinimumSize = appliedNeighborFrame.width
+            requestedNeighborSize = initialFrames.neighbor.width
+        case .top, .bottom:
+            observedMinimumSize = appliedNeighborFrame.height
+            requestedNeighborSize = initialFrames.neighbor.height
+        }
+        let neighborWasClamped = observedMinimumSize > requestedNeighborSize + 1
 
         let finalFrames: AdjacentWindowResizeGeometry.FramePair
         if neighborWasClamped,
            let correctedFrames = AdjacentWindowResizeGeometry.resolvedFrames(
                for: currentSourceFrame,
                match: session.match,
-               neighborMinimumWidth: observedMinimumWidth
+               neighborMinimumSize: observedMinimumSize
            ) {
             finalFrames = correctedFrames
             apply(correctedFrames.neighbor, to: session)
@@ -96,7 +105,7 @@ final class AdjacentWindowResizeController {
               !source.minimized,
               !source.fullscreen,
               source.isResizable,
-              let edge = AdjacentWindowResizeGeometry.resizedHorizontalEdge(
+              let edge = AdjacentWindowResizeGeometry.resizedEdge(
                   from: initialSourceFrame,
                   to: currentSourceFrame
               ),
@@ -150,7 +159,7 @@ final class AdjacentWindowResizeController {
             return
         }
 
-        let sizeFirst = session.match.edge == .right
+        let sizeFirst = session.match.edge == .right || session.match.edge == .bottom
         session.neighbor.setFrameSynchronously(
             frame,
             sizeFirst: sizeFirst,

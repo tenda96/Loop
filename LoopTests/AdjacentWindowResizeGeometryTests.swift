@@ -15,7 +15,7 @@ struct AdjacentWindowResizeGeometryTests {
         let resized = CGRect(x: 0, y: 0, width: 560, height: 700)
 
         #expect(
-            AdjacentWindowResizeGeometry.resizedHorizontalEdge(from: initial, to: resized) == .right
+            AdjacentWindowResizeGeometry.resizedEdge(from: initial, to: resized) == .right
         )
     }
 
@@ -24,8 +24,17 @@ struct AdjacentWindowResizeGeometryTests {
         let resized = CGRect(x: 450, y: 0, width: 560, height: 700)
 
         #expect(
-            AdjacentWindowResizeGeometry.resizedHorizontalEdge(from: initial, to: resized) == .left
+            AdjacentWindowResizeGeometry.resizedEdge(from: initial, to: resized) == .left
         )
+    }
+
+    @Test func detectsTheMovingTopAndBottomEdges() {
+        let initial = CGRect(x: 0, y: 100, width: 900, height: 700)
+        let resizedFromTop = CGRect(x: 0, y: 50, width: 900, height: 750)
+        let resizedFromBottom = CGRect(x: 0, y: 100, width: 900, height: 760)
+
+        #expect(AdjacentWindowResizeGeometry.resizedEdge(from: initial, to: resizedFromTop) == .top)
+        #expect(AdjacentWindowResizeGeometry.resizedEdge(from: initial, to: resizedFromBottom) == .bottom)
     }
 
     @Test func rejectsMovesAndCornerResizes() {
@@ -33,8 +42,8 @@ struct AdjacentWindowResizeGeometryTests {
         let moved = CGRect(x: 20, y: 10, width: 500, height: 700)
         let cornerResize = CGRect(x: 0, y: 0, width: 560, height: 760)
 
-        #expect(AdjacentWindowResizeGeometry.resizedHorizontalEdge(from: initial, to: moved) == nil)
-        #expect(AdjacentWindowResizeGeometry.resizedHorizontalEdge(from: initial, to: cornerResize) == nil)
+        #expect(AdjacentWindowResizeGeometry.resizedEdge(from: initial, to: moved) == nil)
+        #expect(AdjacentWindowResizeGeometry.resizedEdge(from: initial, to: cornerResize) == nil)
     }
 
     @Test func choosesTheClosestAlignedWindowAndPreservesItsGap() throws {
@@ -142,12 +151,71 @@ struct AdjacentWindowResizeGeometryTests {
             AdjacentWindowResizeGeometry.resolvedFrames(
                 for: CGRect(x: 0, y: 0, width: 900, height: 700),
                 match: match,
-                neighborMinimumWidth: 300
+                neighborMinimumSize: 300
             )
         )
 
         #expect(frames.source.maxX == 700)
         #expect(frames.neighbor.minX == 710)
         #expect(frames.neighbor.width == 300)
+    }
+
+    @Test func movingTheBottomBoundaryResizesTheWindowBelow() throws {
+        let source = CGRect(x: 0, y: 0, width: 900, height: 400)
+        let neighbor = CGRect(x: 0, y: 410, width: 900, height: 390)
+        let match = AdjacentWindowResizeGeometry.Match(
+            windowID: 2,
+            edge: .bottom,
+            initialSourceFrame: source,
+            initialNeighborFrame: neighbor,
+            gap: 10
+        )
+
+        let frames = try #require(
+            AdjacentWindowResizeGeometry.resolvedFrames(
+                for: CGRect(x: 0, y: 0, width: 900, height: 500),
+                match: match
+            )
+        )
+
+        #expect(frames.source.maxY == 500)
+        #expect(frames.neighbor.minY == 510)
+        #expect(frames.neighbor.maxY == neighbor.maxY)
+    }
+
+    @Test func availableRightPlacementUsesTheExistingLeftBoundary() throws {
+        let bounds = CGRect(x: 0, y: 0, width: 1200, height: 800)
+        let leftWindow = AvailableSidePlacementGeometry.Candidate(
+            windowID: 2,
+            frame: CGRect(x: 0, y: 0, width: 450, height: 800)
+        )
+
+        let frame = try #require(
+            AvailableSidePlacementGeometry.targetFrame(
+                for: .right,
+                in: bounds,
+                candidates: [leftWindow],
+                windowGap: 10
+            )
+        )
+
+        #expect(frame.minX == 455)
+        #expect(frame.maxX == bounds.maxX)
+    }
+
+    @Test func availableSidePlacementFallsBackWhenNoSuitableObstacleExists() {
+        let bounds = CGRect(x: 0, y: 0, width: 1200, height: 800)
+        let shortWindow = AvailableSidePlacementGeometry.Candidate(
+            windowID: 2,
+            frame: CGRect(x: 0, y: 0, width: 450, height: 200)
+        )
+
+        #expect(
+            AvailableSidePlacementGeometry.targetFrame(
+                for: .right,
+                in: bounds,
+                candidates: [shortWindow]
+            ) == nil
+        )
     }
 }

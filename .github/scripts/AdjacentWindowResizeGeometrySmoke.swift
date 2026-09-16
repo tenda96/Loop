@@ -7,7 +7,9 @@ enum AdjacentWindowResizeGeometrySmoke {
         choosesClosestAlignedNeighbor()
         preservesRightSharedBoundary()
         preservesLeftSharedBoundary()
+        preservesBottomSharedBoundary()
         clampsNeighborMinimumWidth()
+        fillsAvailableRightSide()
 
         print("Adjacent window resize geometry checks passed.")
     }
@@ -17,21 +19,28 @@ enum AdjacentWindowResizeGeometrySmoke {
         let rightWindow = CGRect(x: 510, y: 0, width: 500, height: 700)
 
         expect(
-            AdjacentWindowResizeGeometry.resizedHorizontalEdge(
+            AdjacentWindowResizeGeometry.resizedEdge(
                 from: leftWindow,
                 to: CGRect(x: 0, y: 0, width: 560, height: 700)
             ) == .right,
             "The moving right edge was not detected."
         )
         expect(
-            AdjacentWindowResizeGeometry.resizedHorizontalEdge(
+            AdjacentWindowResizeGeometry.resizedEdge(
                 from: rightWindow,
                 to: CGRect(x: 450, y: 0, width: 560, height: 700)
             ) == .left,
             "The moving left edge was not detected."
         )
         expect(
-            AdjacentWindowResizeGeometry.resizedHorizontalEdge(
+            AdjacentWindowResizeGeometry.resizedEdge(
+                from: leftWindow,
+                to: CGRect(x: 0, y: 0, width: 500, height: 760)
+            ) == .bottom,
+            "The moving bottom edge was not detected."
+        )
+        expect(
+            AdjacentWindowResizeGeometry.resizedEdge(
                 from: leftWindow,
                 to: CGRect(x: 20, y: 10, width: 500, height: 700)
             ) == nil,
@@ -119,11 +128,45 @@ enum AdjacentWindowResizeGeometrySmoke {
         let frames = AdjacentWindowResizeGeometry.resolvedFrames(
             for: CGRect(x: 0, y: 0, width: 900, height: 700),
             match: match,
-            neighborMinimumWidth: 300
+            neighborMinimumSize: 300
         )
 
         expect(frames?.source.maxX == 700, "The shared edge ignored the minimum width.")
         expect(frames?.neighbor.width == 300, "The neighbor minimum width was not applied.")
+    }
+
+    private static func preservesBottomSharedBoundary() {
+        let source = CGRect(x: 0, y: 0, width: 900, height: 400)
+        let neighbor = CGRect(x: 0, y: 410, width: 900, height: 390)
+        let match = AdjacentWindowResizeGeometry.Match(
+            windowID: 2,
+            edge: .bottom,
+            initialSourceFrame: source,
+            initialNeighborFrame: neighbor,
+            gap: 10
+        )
+        let frames = AdjacentWindowResizeGeometry.resolvedFrames(
+            for: CGRect(x: 0, y: 0, width: 900, height: 500),
+            match: match
+        )
+
+        expect(frames?.neighbor.minY == 510, "The lower neighbor did not follow the shared edge.")
+        expect(frames?.neighbor.maxY == neighbor.maxY, "The lower neighbor outer edge moved.")
+    }
+
+    private static func fillsAvailableRightSide() {
+        let bounds = CGRect(x: 0, y: 0, width: 1200, height: 800)
+        let frame = AvailableSidePlacementGeometry.targetFrame(
+            for: .right,
+            in: bounds,
+            candidates: [
+                .init(windowID: 2, frame: CGRect(x: 0, y: 0, width: 450, height: 800))
+            ],
+            windowGap: 10
+        )
+
+        expect(frame?.minX == 455, "Right placement ignored the existing left window.")
+        expect(frame?.maxX == bounds.maxX, "Right placement did not reach the screen edge.")
     }
 
     private static func expect(

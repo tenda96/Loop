@@ -7,13 +7,15 @@
 
 import CoreGraphics
 
-/// Describes the vertical edge of a source window that is being resized.
+/// Describes the edge of a source window that is being resized.
 enum AdjacentWindowResizeEdge: Equatable {
     case left
     case right
+    case top
+    case bottom
 }
 
-/// Pure geometry used to identify and resize a horizontally adjacent window.
+/// Pure geometry used to identify and resize a window adjacent to any shared edge.
 ///
 /// Keeping these calculations independent from Accessibility makes the behavior deterministic
 /// and allows the edge cases to be covered without manipulating real application windows.
@@ -33,7 +35,7 @@ enum AdjacentWindowResizeGeometry {
         let gap: CGFloat
     }
 
-    /// A pair of frames that shares one vertical boundary while preserving both outer edges.
+    /// A pair of frames that shares one boundary while preserving both outer edges.
     struct FramePair: Equatable {
         let source: CGRect
         let neighbor: CGRect
@@ -45,45 +47,34 @@ enum AdjacentWindowResizeGeometry {
     /// Windows farther apart than this value are not considered part of the same layout.
     static let defaultMaximumGap: CGFloat = 32
 
-    /// Require meaningful vertical alignment so unrelated nearby windows are ignored.
-    static let defaultMinimumVerticalOverlapRatio: CGFloat = 0.5
+    /// Require meaningful alignment on the shared edge so unrelated nearby windows are ignored.
+    static let defaultMinimumPerpendicularOverlapRatio: CGFloat = 0.5
 
-    /// A generic safety floor for applications that do not expose a usable minimum width.
-    static let fallbackMinimumWindowWidth: CGFloat = 80
+    /// A generic safety floor for applications that do not expose a usable minimum size.
+    static let fallbackMinimumWindowSize: CGFloat = 80
 
-    /// Infers which horizontal edge changed during a native macOS resize.
+    /// Infers which single edge changed during a native macOS resize.
     /// - Parameters:
     ///   - initialFrame: Source frame captured near the beginning of the drag.
     ///   - currentFrame: Most recently observed source frame.
     ///   - tolerance: Maximum AX rounding drift accepted on an edge that should be stationary.
-    /// - Returns: The moving vertical edge, or `nil` for moves, corner resizes, and vertical resizes.
-    static func resizedHorizontalEdge(
+    /// - Returns: The moving edge, or `nil` for moves and corner resizes.
+    static func resizedEdge(
         from initialFrame: CGRect,
         to currentFrame: CGRect,
         tolerance: CGFloat = 1.5
     ) -> AdjacentWindowResizeEdge? {
-        let widthChanged = abs(currentFrame.width - initialFrame.width) > tolerance
-        let heightStayedFixed = abs(currentFrame.height - initialFrame.height) <= tolerance
+        let changedEdges: [AdjacentWindowResizeEdge] = [
+            abs(currentFrame.minX - initialFrame.minX) > tolerance ? .left : nil,
+            abs(currentFrame.maxX - initialFrame.maxX) > tolerance ? .right : nil,
+            abs(currentFrame.minY - initialFrame.minY) > tolerance ? .top : nil,
+            abs(currentFrame.maxY - initialFrame.maxY) > tolerance ? .bottom : nil
+        ].compactMap { $0 }
 
-        guard widthChanged, heightStayedFixed else {
-            return nil
-        }
-
-        let leftStayedFixed = abs(currentFrame.minX - initialFrame.minX) <= tolerance
-        let rightStayedFixed = abs(currentFrame.maxX - initialFrame.maxX) <= tolerance
-
-        if leftStayedFixed, !rightStayedFixed {
-            return .right
-        }
-
-        if rightStayedFixed, !leftStayedFixed {
-            return .left
-        }
-
-        return nil
+        return changedEdges.count == 1 ? changedEdges[0] : nil
     }
 
-    /// Finds the closest candidate sharing enough vertical space with the source window.
+    /// Finds the closest candidate sharing enough perpendicular space with the source window.
     /// - Parameters:
     ///   - sourceFrame: Source frame at the start of the resize session.
     ///   - edge: Source edge being dragged.
@@ -98,18 +89,18 @@ enum AdjacentWindowResizeGeometry {
         candidates: [Candidate],
         maximumGap: CGFloat = defaultMaximumGap,
         overlapAllowance: CGFloat = defaultOverlapAllowance,
-        minimumVerticalOverlapRatio: CGFloat = defaultMinimumVerticalOverlapRatio
+        minimumPerpendicularOverlapRatio: CGFloat = defaultMinimumPerpendicularOverlapRatio
     ) -> Match? {
         let eligible = candidates.compactMap { candidate -> (candidate: Candidate, gap: CGFloat, overlap: CGFloat)? in
-            let gap = horizontalGap(from: sourceFrame, to: candidate.frame, edge: edge)
+            let gap = gap(from: sourceFrame, to: candidate.frame, edge: edge)
             guard gap >= -overlapAllowance, gap <= maximumGap else {
                 return nil
             }
 
-            let overlap = verticalOverlap(sourceFrame, candidate.frame)
-            let shorterHeight = min(sourceFrame.height, candidate.frame.height)
-            guard shorterHeight > 0,
-                  overlap / shorterHeight >= minimumVerticalOverlapRatio
+            let overlap = perpendicularOverlap(sourceFrame, candidate.frame, edge: edge)
+            let shorterSpan = perpendicularSpan(sourceFrame, candidate.frame, edge: edge)
+            guard shorterSpan > 0,
+                  overlap / shorterSpan >= minimumPerpendicularOverlapRatio
             else {
                 return nil
             }
@@ -151,21 +142,21 @@ enum AdjacentWindowResizeGeometry {
     /// - Parameters:
     ///   - currentSourceFrame: Source frame currently produced by the user's native resize.
     ///   - match: Geometry captured when the resize session began.
-    ///   - neighborMinimumWidth: Minimum usable width for the neighboring window.
+    ///   - neighborMinimumSize: Minimum usable width or height for the neighboring window.
     /// - Returns: Coordinated source and neighbor frames, or `nil` if the geometry is invalid.
     static func resolvedFrames(
         for currentSourceFrame: CGRect,
         match: Match,
-        neighborMinimumWidth: CGFloat = fallbackMinimumWindowWidth
+        neighborMinimumSize: CGFloat = fallbackMinimumWindowSize
     ) -> FramePair? {
-        let minimumWidth = max(1, neighborMinimumWidth)
+        let minimumSize = max(1, neighborMinimumSize)
         var source = match.initialSourceFrame
         var neighbor = match.initialNeighborFrame
 
         switch match.edge {
         case .right:
             let neighborOuterEdge = match.initialNeighborFrame.maxX
-            let maximumSharedEdge = neighborOuterEdge - minimumWidth - match.gap
+            let maximumSharedEdge = neighborOuterEdge - minimumSize - match.gap
             let sharedEdge = min(currentSourceFrame.maxX, maximumSharedEdge)
 
             source.size.width = sharedEdge - source.minX
@@ -175,23 +166,47 @@ enum AdjacentWindowResizeGeometry {
         case .left:
             let neighborOuterEdge = match.initialNeighborFrame.minX
             let sourceOuterEdge = match.initialSourceFrame.maxX
-            let minimumSharedEdge = neighborOuterEdge + minimumWidth + match.gap
+            let minimumSharedEdge = neighborOuterEdge + minimumSize + match.gap
             let sharedEdge = max(currentSourceFrame.minX, minimumSharedEdge)
 
             source.origin.x = sharedEdge
             source.size.width = sourceOuterEdge - sharedEdge
             neighbor.origin.x = neighborOuterEdge
             neighbor.size.width = sharedEdge - match.gap - neighborOuterEdge
+
+        case .bottom:
+            let neighborOuterEdge = match.initialNeighborFrame.maxY
+            let maximumSharedEdge = neighborOuterEdge - minimumSize - match.gap
+            let sharedEdge = min(currentSourceFrame.maxY, maximumSharedEdge)
+
+            source.size.height = sharedEdge - source.minY
+            neighbor.origin.y = sharedEdge + match.gap
+            neighbor.size.height = neighborOuterEdge - neighbor.minY
+
+        case .top:
+            let neighborOuterEdge = match.initialNeighborFrame.minY
+            let sourceOuterEdge = match.initialSourceFrame.maxY
+            let minimumSharedEdge = neighborOuterEdge + minimumSize + match.gap
+            let sharedEdge = max(currentSourceFrame.minY, minimumSharedEdge)
+
+            source.origin.y = sharedEdge
+            source.size.height = sourceOuterEdge - sharedEdge
+            neighbor.origin.y = neighborOuterEdge
+            neighbor.size.height = sharedEdge - match.gap - neighborOuterEdge
         }
 
-        guard source.width > 0, neighbor.width > 0 else {
+        guard source.width > 0,
+              source.height > 0,
+              neighbor.width > 0,
+              neighbor.height > 0
+        else {
             return nil
         }
 
         return FramePair(source: source, neighbor: neighbor)
     }
 
-    private static func horizontalGap(
+    private static func gap(
         from sourceFrame: CGRect,
         to candidateFrame: CGRect,
         edge: AdjacentWindowResizeEdge
@@ -201,10 +216,36 @@ enum AdjacentWindowResizeGeometry {
             sourceFrame.minX - candidateFrame.maxX
         case .right:
             candidateFrame.minX - sourceFrame.maxX
+        case .top:
+            sourceFrame.minY - candidateFrame.maxY
+        case .bottom:
+            candidateFrame.minY - sourceFrame.maxY
         }
     }
 
-    private static func verticalOverlap(_ lhs: CGRect, _ rhs: CGRect) -> CGFloat {
-        max(0, min(lhs.maxY, rhs.maxY) - max(lhs.minY, rhs.minY))
+    private static func perpendicularOverlap(
+        _ lhs: CGRect,
+        _ rhs: CGRect,
+        edge: AdjacentWindowResizeEdge
+    ) -> CGFloat {
+        switch edge {
+        case .left, .right:
+            max(0, min(lhs.maxY, rhs.maxY) - max(lhs.minY, rhs.minY))
+        case .top, .bottom:
+            max(0, min(lhs.maxX, rhs.maxX) - max(lhs.minX, rhs.minX))
+        }
+    }
+
+    private static func perpendicularSpan(
+        _ lhs: CGRect,
+        _ rhs: CGRect,
+        edge: AdjacentWindowResizeEdge
+    ) -> CGFloat {
+        switch edge {
+        case .left, .right:
+            min(lhs.height, rhs.height)
+        case .top, .bottom:
+            min(lhs.width, rhs.width)
+        }
     }
 }

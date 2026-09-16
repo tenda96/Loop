@@ -47,7 +47,16 @@ extension Defaults.Keys {
     static let windowSnapping = Key<Bool>("windowSnapping", default: false, iCloud: true)
     static let suppressMissionControlOnTopDrag = Key<Bool>("suppressMissionControlOnTopDrag", default: true, iCloud: true)
     static let restoreWindowFrameOnDrag = Key<Bool>("restoreWindowFrameOnDrag", default: false, iCloud: true)
-    static let resizeAdjacentWindows = Key<Bool>("resizeAdjacentWindows", default: false, iCloud: true)
+    static let resizeAdjacentWindows = Key<Bool>(
+        "resizeAdjacentWindows",
+        default: Bundle.main.isPersonalTestBuild,
+        iCloud: true
+    )
+    static let useAvailableSpaceForSidePlacement = Key<Bool>(
+        "useAvailableSpaceForSidePlacement",
+        default: Bundle.main.isPersonalTestBuild,
+        iCloud: true
+    )
     static let enablePadding = Key<Bool>("enablePadding", default: false, iCloud: true)
     static let padding = Key<PaddingConfiguration>("padding", default: .zero, iCloud: true)
     static let useScreenWithCursor = Key<Bool>("useScreenWithCursor", default: true, iCloud: true)

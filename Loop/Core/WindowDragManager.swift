@@ -24,6 +24,7 @@ final class WindowDragManager {
 
     private let previewController = PreviewController()
 
+    private var leftMouseDownMonitor: PassiveEventMonitor?
     private var leftMouseDraggedMonitor: PassiveEventMonitor?
     private var leftMouseUpMonitor: PassiveEventMonitor?
 
@@ -69,6 +70,12 @@ final class WindowDragManager {
     private func setupListeners() {
         removeListeners()
 
+        let leftMouseDownMonitor = PassiveEventMonitor(
+            "snapping_left_mouse_down_monitor",
+            events: [.leftMouseDown],
+            callback: leftMouseDown
+        )
+
         let leftMouseDraggedMonitor = PassiveEventMonitor(
             "snapping_left_mouse_dragged_monitor",
             events: [.leftMouseDragged],
@@ -81,9 +88,11 @@ final class WindowDragManager {
             callback: leftMouseUp
         )
 
+        leftMouseDownMonitor.start()
         leftMouseDraggedMonitor.start()
         leftMouseUpMonitor.start()
 
+        self.leftMouseDownMonitor = leftMouseDownMonitor
         self.leftMouseDraggedMonitor = leftMouseDraggedMonitor
         self.leftMouseUpMonitor = leftMouseUpMonitor
     }
@@ -91,9 +100,20 @@ final class WindowDragManager {
     private func removeListeners() {
         leftMouseUpMonitor?.stop()
         leftMouseDraggedMonitor?.stop()
+        leftMouseDownMonitor?.stop()
 
         leftMouseUpMonitor = nil
         leftMouseDraggedMonitor = nil
+        leftMouseDownMonitor = nil
+    }
+
+    private func leftMouseDown(event _: CGEvent) {
+        guard Defaults[.resizeAdjacentWindows] else {
+            return
+        }
+
+        resetDragState()
+        setCurrentDraggingWindow()
     }
 
     private func leftMouseDragged(event _: CGEvent) {

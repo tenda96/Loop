@@ -20,6 +20,7 @@ struct BehaviorConfigurationView: View {
     @Default(.suppressMissionControlOnTopDrag) var suppressMissionControlOnTopDrag
     @Default(.restoreWindowFrameOnDrag) var restoreWindowFrameOnDrag
     @Default(.resizeAdjacentWindows) var resizeAdjacentWindows
+    @Default(.useAvailableSpaceForSidePlacement) var useAvailableSpaceForSidePlacement
     @Default(.useSystemWindowManagerWhenAvailable) var useSystemWindowManagerWhenAvailable
     @Default(.useScreenWithCursor) var useScreenWithCursor
     @Default(.moveCursorWithWindow) var moveCursorWithWindow
@@ -79,7 +80,6 @@ struct BehaviorConfigurationView: View {
             // Enabling the system window manager will override these options.
             if !useSystemWindowManagerWhenAvailable {
                 LuminareToggle("Restore window frame on drag", isOn: $restoreWindowFrameOnDrag)
-                LuminareToggle("Resize adjacent windows", isOn: $resizeAdjacentWindows)
                 LuminareButton("Padding", "Configure…") {
                     isPaddingConfigurationViewPresented = true
                 }
@@ -89,6 +89,12 @@ struct BehaviorConfigurationView: View {
                 }
                 .luminareModalCornerRadius(24)
             }
+
+            LuminareToggle("Resize adjacent windows", isOn: $resizeAdjacentWindows)
+            LuminareToggle(
+                "Use occupied space for side placement",
+                isOn: $useAvailableSpaceForSidePlacement
+            )
         }
     }
 
