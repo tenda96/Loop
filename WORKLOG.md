@@ -27,7 +27,7 @@ The user will perform application-level testing. Before handoff, the project mus
 
 ## Status
 
-Current phase: second-pass plan approved and implemented locally; validation is in progress before the next remote build.
+Current phase: second-pass build passed remote CI and works substantially better in user testing; reliability and multi-window follow-up work has been reviewed but not yet implemented.
 
 ### Completed
 
@@ -54,10 +54,23 @@ Current phase: second-pass plan approved and implemented locally; validation is 
 
 ### Next steps
 
-1. Run formatting, parsing, JSON, standalone geometry, and diff checks for the second pass.
-2. Push the second-pass implementation and run remote Xcode CI.
-3. Resolve any full-toolchain findings without regressing the successful first build.
-4. Install the resulting ARM64 test app and request focused user feedback.
+1. Isolate the custom build's inter-instance termination notification from upstream Loop.
+2. Make drag-source detection resilient when the cursor is exactly on a shared boundary and retry transient failed matches.
+3. Coalesce high-frequency drag events to reduce AX writes, jitter, and CPU use.
+4. Extend pairing from one neighbor to every window sharing the dragged edge, including stacked layouts.
+5. Make smart placement validate the entire target region instead of considering only one opposing obstacle.
+6. Decide whether stable local signing is worthwhile to preserve Accessibility authorization across future builds.
+
+## Review backlog after second user test
+
+- **High:** the distributed termination notification still uses the upstream constant `com.MrKai77.Loop.terminate`. Although process enumeration filters by bundle ID, every Loop variant observes the same notification, so launching one variant can terminate the other.
+- **High:** the controller stores only one `Session.neighbor`; a full-height window beside two stacked windows can resize only one candidate and may overlap the other.
+- **High:** the first failed adjacency lookup sets `didFailToCreateSession` for the rest of the drag. A transient AX/window-list miss or ambiguous border click can therefore make a valid drag appear non-functional until mouse-up.
+- **Medium:** mouse-down resolves one window exactly under the cursor. On a shared border, WindowServer can choose the opposite member of the pair; comparing nearby window snapshots and selecting the frame that actually changes would be more reliable.
+- **Medium:** every drag event creates work and can issue synchronous AX frame writes. Coalescing updates to one pending/latest frame would reduce jitter and event backlog.
+- **Medium:** adaptive side placement selects one sufficiently tall opposing window but does not prove that the complete destination rectangle is free of other windows. Multi-row or crowded layouts need region-based occupancy checks.
+- **Medium:** the 32-point adjacency distance and 50% perpendicular overlap thresholds are fixed. They should be derived from padding/layout geometry or made advanced preferences if real applications expose a need.
+- **Known limitation:** corner drags deliberately change two edges and are not linked; GUI runtime tests remain manual because the hosted GitHub runner cannot establish the app-hosted XCTest connection.
 
 ## MVP acceptance criteria
 
@@ -112,6 +125,8 @@ Current phase: second-pass plan approved and implemented locally; validation is 
 - 2026-09-15: expanded XCTest and standalone smoke coverage for four-edge geometry, minimum-size clamping, adaptive right-side placement, and fallback behavior. The standalone Swift 6.2.3 geometry suite passed against the matching macOS 26.2 SDK; all changed Swift sources passed frontend parsing and the string catalog remained valid JSON.
 - 2026-09-16: resumed from the persistent log and repeated the complete local preflight. Four-edge and adaptive-placement smoke checks passed; every changed Swift source parsed; the workflow parsed as YAML; the localization catalog parsed as JSON; and `git diff --check` passed. The second pass is ready for remote Xcode validation.
 - 2026-09-16: second-pass remote run `35098750305` resolved dependencies successfully but stopped before compilation because SwiftFormat's `preferKeyPath` rule rejected the new identity `compactMap` closure. Replaced it with the required `compactMap(\.self)` form; no runtime or geometry logic changed.
+- 2026-09-16: corrected remote run `35103814641` passed SwiftFormat, full application/test-target compilation, standalone four-edge/adaptive-placement checks, ARM64 Development build, ad-hoc signature verification, and artifact upload. The user installed/tested the result and reported that it works substantially better.
+- 2026-09-16: completed a post-test code review without changing runtime code. Prioritized custom/upstream instance isolation, resilient source/pair detection, drag-event coalescing, multi-neighbor edge groups, and full-region smart-placement validation.
 
 ## Environment blocker
 
